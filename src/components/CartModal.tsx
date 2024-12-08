@@ -7,9 +7,6 @@ import { useWixClient } from "@/hooks/useWixClient";
 import { currentCart } from "@wix/ecom";
 
 const CartModal = () => {
-  // TEMPORARY
-  // const cartItems = true;
-
   const wixClient = useWixClient();
   const { cart, isLoading, removeItem } = useCartStore();
 
