@@ -1,77 +1,58 @@
 import { create } from "zustand";
-import { currentCart } from "@wix/ecom";
-import { WixClient } from "@/context/wixContext";
+import { persist } from "zustand/middleware";
 
-type CartState = {
-  cart: currentCart.Cart;
-  isLoading: boolean;
-  counter: number;
-  error: string | null;
-  getCart: (wixClient: WixClient) => void;
-  addItem: (
-    wixClient: WixClient,
-    productId: string,
-    variantId: string,
-    quantity: number
-  ) => void;
-  removeItem: (wixClient: WixClient, itemId: string) => void;
+type CartItem = {
+  _id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  image?: string;
 };
 
-export const useCartStore = create<CartState>((set) => ({
-  cart: {} as currentCart.Cart,
-  isLoading: false,
-  counter: 0,
-  error: null,
-  getCart: async (wixClient) => {
-    try {
-      set({ isLoading: true, error: null });
-      const cart = await wixClient.currentCart.getCurrentCart();
-      set({
-        cart: cart || ({} as currentCart.Cart),
-        counter: cart?.lineItems?.length || 0,
-        isLoading: false,
-      });
-    } catch (err) {
-      console.error("Cart fetch error:", err);
-      set({
-        error: "Failed to fetch cart",
-        isLoading: false,
-        cart: {} as currentCart.Cart,
-        counter: 0,
-      });
+type CartState = {
+  items: CartItem[];
+  isLoading: boolean;
+  error: string | null;
+  addItem: (item: CartItem) => void;
+  removeItem: (itemId: string) => void;
+  clearCart: () => void;
+  getTotal: () => number;
+};
+
+export const useCartStore = create<CartState>()(
+  persist(
+    (set, get) => ({
+      items: [],
+      isLoading: false,
+      error: null,
+      addItem: (item) => {
+        set((state) => {
+          const existingItem = state.items.find((i) => i._id === item._id);
+          if (existingItem) {
+            return {
+              items: state.items.map((i) =>
+                i._id === item._id
+                  ? { ...i, quantity: i.quantity + item.quantity }
+                  : i
+              ),
+            };
+          }
+          return { items: [...state.items, item] };
+        });
+      },
+      removeItem: (itemId) => {
+        set((state) => ({
+          items: state.items.filter((item) => item._id !== itemId),
+        }));
+      },
+      clearCart: () => set({ items: [] }),
+      getTotal: () => {
+        const state = get();
+        return state.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      },
+    }),
+    {
+      name: "shopping-cart",
     }
-  },
-  addItem: async (wixClient, productId, variantId, quantity) => {
-    set((state) => ({ ...state, isLoading: true }));
-    const response = await wixClient.currentCart.addToCurrentCart({
-      lineItems: [
-        {
-          catalogReference: {
-            appId: process.env.NEXT_PUBLIC_WIX_APP_ID!,
-            catalogItemId: productId,
-            ...(variantId && { options: { variantId } }),
-          },
-          quantity: quantity,
-        },
-      ],
-    });
-
-    set({
-      cart: response.cart,
-      counter: response.cart?.lineItems.length,
-      isLoading: false,
-    });
-  },
-  removeItem: async (wixClient, itemId) => {
-    set((state) => ({ ...state, isLoading: true }));
-    const response = await wixClient.currentCart.removeLineItemsFromCurrentCart(
-      [itemId]
-    );
-
-    set({
-      cart: response.cart,
-      counter: response.cart?.lineItems.length,
-      isLoading: false,
-    });
-  },
-}));
+  )
+);
